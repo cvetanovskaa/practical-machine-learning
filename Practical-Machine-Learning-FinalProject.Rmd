@@ -1,0 +1,80 @@
+---
+title: "Practical Machine Learning Final"
+author: "Aleksandra Cvetanovska"
+date: "10/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(caret)
+library(randomForest)
+library(rattle)
+library(rpart)
+
+setwd('/Users/aleksandra.cvetanovska/R-test-repo/PML/')
+
+training <- read.csv(file = 'pml-training.csv', na.strings=c("NA","#DIV/0!", ""))
+testing <- read.csv(file = 'pml-testing.csv', na.strings=c("NA","#DIV/0!", ""))
+
+splitTraining <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+training_split <- training[splitTraining, ]
+validation_split <- training[-splitTraining, ]
+
+clean_training <- training_split[,colSums(is.na(training_split)) == 0]
+clean_validation <- validation_split[,colSums(is.na(training_split)) == 0]
+clean_testing <- testing[,colSums(is.na(testing)) == 0]
+
+clean_training <- clean_training[,-c(1:7)]
+clean_testing <- clean_testing[,-c(1:7)]
+
+set.seed(20673)
+```
+
+## Exploratory Analysis
+
+We remove all columns that have at least one NA value because most model predictions don't work with NA values. We see that after removing the columns with NA values, have only 60 columns (from 160). We also remove all un-needed columns such as user_name & time stamps.
+There's 5 classes - A, B, C, D, & E. According to the authors, "class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes" (http:/groupware.les.inf.puc-rio.br/har#ixzz4TjqBfZbO). 
+We also prepare our data for cross validation, by dividing the training set into training (70%) & validation (30%). The expected out-of-sample error will be represented by the expected number of missclassified observations/total observations in the clean_testing data set.
+
+```{r exploratoryAnalysis}
+dim(clean_training)
+table(clean_training$classe)
+```
+
+## Prediction Model 1 - Decision Tree
+
+First, we try to predict using the `Recursive Partitioning and Regression Trees` method. We see that the accuracy of this model, which uses all variables that are left, is ~74% with a kappa of ~.67. According to the p-value, although our model has only ~74% accuracy rate, it does offer significantly better performance that the NIR (No Information Rate) model which predicts by always using the majority class label.
+We also plot the `rpart` model, for a visual representation.
+
+```{r prediction1}
+clean_validation$classe <- as.factor(clean_validation$classe)
+rpart_model <- rpart(classe~., data=clean_training, method = 'class')
+rpart_predict <- predict(rpart_model, clean_validation, type = 'class')
+rpart_confusion_matrix <- confusionMatrix(rpart_predict, clean_validation$classe)
+rpart_confusion_matrix
+rpart_confusion_matrix$overall[1]
+
+fancyRpartPlot(rpart_model)
+```
+
+
+## Prediction Model 2 - Random Forest
+
+The second model we use is `Random Forest`. We see that this model has a much better accuracy - 99.5% (95% CI: (99.3%, 99.7%)), and kappa of ~.995. The out-of-sample sample error is .5% according to the formula of 1-accuracy.
+
+```{r prediction2}
+clean_training$classe <- as.factor(clean_training$classe)
+rf_model <- randomForest(classe~., data=clean_training, method = 'class')
+rf_predict <- predict(rf_model, clean_validation, type = 'class')
+rf_confusion_matrix <- confusionMatrix(rf_predict, clean_validation$classe)
+rf_confusion_matrix
+rf_confusion_matrix$overall[1]
+```
+
+## Conclusion
+
+Out of the two models we tested, we found that the Random Forests model performs much better than Decision Trees on this dataset. With accuracy of 99.5% & out-of-sample error of .5% this is the model we choose. The final prediction of which class of action the person was doing in each of the 20 cases is:
+
+```{r conclusion}
+predict(rf_model, clean_testing, type="class")
+```
